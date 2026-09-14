@@ -90,9 +90,14 @@ def tpl_number(args):
     d.text((PAD, PAD), args.kicker, font=mono(26), fill=GREY_LIGHT)
 
     y = PAD + 100
-    f_num = newsreader(150, weight=800, opsz=72)
+    max_num_width = SIZE - 2 * PAD
+    num_size = 150
+    f_num = newsreader(num_size, weight=800, opsz=72)
+    while d.textlength(args.number, font=f_num) > max_num_width and num_size > 60:
+        num_size -= 6
+        f_num = newsreader(num_size, weight=800, opsz=max(6, min(72, num_size * 0.14)))
     d.text((PAD, y), args.number, font=f_num, fill=ACCENT_DEEP)
-    y += 190
+    y += int(num_size * 1.25) + 20
 
     f_what = newsreader(52, weight=700, opsz=40)
     y = draw_multiline(d, (PAD, y), args.what, f_what, INK, SIZE - 2 * PAD, line_gap=1.1) + 20
