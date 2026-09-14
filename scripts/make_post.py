@@ -1,18 +1,22 @@
 #!/usr/bin/env python3
 """
 Render a bread.eg Instagram post (1080x1080 PNG) using the brand's
-existing templates: number, breaking, quote.
+templates: number, breaking, quote.
+
+Header on every template is just the date (top-left, muted mono) -
+no "NUMBER OF THE DAY" / "BREAKING" / category label. Footer on every
+template is a hairline divider, the source citation, and the bread
+logo below the divider, bottom-right.
 
 Usage:
   python3 make_post.py --template number --out ../posts/2026-09-18.png \
-    --kicker "NUMBER OF THE DAY - 18 SEP 2026" --number "EGP 89bn" \
+    --date "18 SEP 2026" --number "EGP 89bn" \
     --what "Distressed resale units listed in 30 days" \
     --context "6,200 units drew 32,000 buyer requests." \
     --source "AQAR EXIT, VIA MASRAWY"
 """
 import argparse
 import os
-import textwrap
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -46,17 +50,6 @@ def mono(size, weight="Regular"):
     return ImageFont.truetype(os.path.join(FONTS, name), size)
 
 
-def paste_logo(img, variant="dark", width=266, margin=PAD):
-    name = "bread-logo-white.png" if variant == "white" else "bread-logo.png"
-    logo = Image.open(os.path.join(ASSETS, name)).convert("RGBA")
-    ratio = width / logo.width
-    logo = logo.resize((width, int(logo.height * ratio)), Image.LANCZOS)
-    x = SIZE - margin - logo.width
-    y = SIZE - margin - logo.height
-    img.paste(logo, (x, y), logo)
-    return y  # top-y of logo, for aligning source line baseline
-
-
 def wrap_by_width(draw, text, font, max_width):
     words = text.split()
     lines, cur = [], ""
@@ -84,10 +77,29 @@ def draw_multiline(draw, xy, text, font, fill, max_width, line_gap=1.0):
     return y  # returns y after last line
 
 
+def footer(img, d, source, source_fg, logo_variant, divider_color):
+    """Hairline divider, source citation, logo below the divider (bottom-right). Every template ends with this."""
+    logo_name = "bread-logo-white.png" if logo_variant == "white" else "bread-logo.png"
+    logo = Image.open(os.path.join(ASSETS, logo_name)).convert("RGBA")
+    logo_w = 228
+    ratio = logo_w / logo.width
+    logo = logo.resize((logo_w, int(logo.height * ratio)), Image.LANCZOS)
+
+    divider_y = SIZE - PAD - 78
+    d.line([(PAD, divider_y), (SIZE - PAD, divider_y)], fill=divider_color, width=2)
+
+    logo_y = divider_y + 26
+    img.paste(logo, (SIZE - PAD - logo.width, logo_y), logo)
+
+    src_font = mono(24)
+    ascent, descent = src_font.getmetrics()
+    d.text((PAD, logo_y + (logo.height - (ascent + descent)) // 2), source, font=src_font, fill=source_fg)
+
+
 def tpl_number(args):
     img = Image.new("RGB", (SIZE, SIZE), PAPER)
     d = ImageDraw.Draw(img)
-    d.text((PAD, PAD), args.kicker, font=mono(26), fill=GREY_LIGHT)
+    d.text((PAD, PAD), args.date, font=mono(26), fill=GREY_LIGHT)
 
     y = PAD + 100
     max_num_width = SIZE - 2 * PAD
@@ -103,12 +115,9 @@ def tpl_number(args):
     y = draw_multiline(d, (PAD, y), args.what, f_what, INK, SIZE - 2 * PAD, line_gap=1.1) + 20
 
     f_ctx = newsreader(36, weight=500, opsz=20)
-    y = draw_multiline(d, (PAD, y), args.context, f_ctx, GREY_BODY, 840, line_gap=1.35)
+    draw_multiline(d, (PAD, y), args.context, f_ctx, GREY_BODY, 840, line_gap=1.35)
 
-    ry = SIZE - PAD - 32
-    d.line([(PAD, ry - 32), (SIZE - PAD, ry - 32)], fill="#e2e2de", width=2)
-    d.text((PAD, ry), args.source, font=mono(24), fill=GREY_LIGHT)
-    paste_logo(img, "dark", width=266)
+    footer(img, d, args.source, GREY_LIGHT, "dark", "#e2e2de")
     return img
 
 
@@ -117,53 +126,39 @@ def tpl_breaking(args):
     bg = INK if ink_bg else BONE
     fg = "#ffffff" if ink_bg else INK
     sub_fg = "#b5b5ae" if ink_bg else GREY_BODY
-    tag_bg = ACCENT_FILL
-    kicker_fg = GREY_ON_INK if ink_bg else GREY_LIGHT
+    date_fg = GREY_ON_INK if ink_bg else GREY_LIGHT
     source_fg = GREY_ON_INK_SOURCE if ink_bg else GREY_LIGHT
     logo_variant = "white" if ink_bg else "dark"
+    divider_color = "#2a2a28" if ink_bg else "#dedeD9"
 
     img = Image.new("RGB", (SIZE, SIZE), bg)
     d = ImageDraw.Draw(img)
+    d.text((PAD, PAD), args.date, font=mono(26), fill=date_fg)
 
-    tag_font = mono(26, "Bold")
-    tag_pad_x, tag_pad_y = 22, 14
-    tag_w = d.textlength(args.tag, font=tag_font) + tag_pad_x * 2
-    tag_h = tag_font.size + tag_pad_y * 2 + 8
-    d.rectangle([PAD, PAD, PAD + tag_w, PAD + tag_h], fill=tag_bg)
-    d.text((PAD + tag_pad_x, PAD + tag_pad_y), args.tag, font=tag_font, fill="#ffffff")
-    d.text((PAD + tag_w + 20, PAD + tag_pad_y), args.date, font=mono(26), fill=kicker_fg)
-
-    y = PAD + int(tag_h) + 70
+    y = PAD + 90
     f_head = newsreader(88, weight=800, opsz=72)
     y = draw_multiline(d, (PAD, y), args.headline, f_head, fg, SIZE - 2 * PAD, line_gap=1.0) + 36
 
     f_sub = newsreader(38, weight=500, opsz=20)
     draw_multiline(d, (PAD, y), args.standfirst, f_sub, sub_fg, 860, line_gap=1.35)
 
-    src_font = mono(24)
-    paste_logo(img, logo_variant, width=285)
-    ascent, descent = src_font.getmetrics()
-    d.text((PAD, SIZE - PAD - ascent - descent), args.source, font=src_font, fill=source_fg)
+    footer(img, d, args.source, source_fg, logo_variant, divider_color)
     return img
 
 
 def tpl_quote(args):
     img = Image.new("RGB", (SIZE, SIZE), INK)
     d = ImageDraw.Draw(img)
-    d.text((PAD, PAD), args.kicker, font=mono(26), fill=GREY_ON_INK)
+    d.text((PAD, PAD), args.date, font=mono(26), fill=GREY_ON_INK)
 
     f_quote = newsreader(84, weight=700, opsz=64)
-    y = 340
-    y = draw_multiline(d, (PAD, y), args.quote, f_quote, "#ffffff", SIZE - 2 * PAD, line_gap=1.12)
+    y = 260
+    y = draw_multiline(d, (PAD, y), args.quote, f_quote, "#ffffff", SIZE - 2 * PAD, line_gap=1.12) + 44
 
-    circle_d = 130
-    cy = SIZE - PAD - circle_d
-    d.ellipse([PAD, cy, PAD + circle_d, cy + circle_d], fill="#2a2a28")
-    tx = PAD + circle_d + 28
-    d.text((tx, cy + 20), args.name, font=newsreader(40, weight=700, opsz=24), fill="#ffffff")
-    d.text((tx, cy + 74), args.title, font=newsreader(30, weight=500, opsz=20), fill=GREY_ON_INK)
+    d.text((PAD, y), args.name, font=newsreader(40, weight=700, opsz=24), fill="#ffffff")
+    d.text((PAD, y + 54), args.title, font=newsreader(30, weight=500, opsz=20), fill=GREY_ON_INK)
 
-    paste_logo(img, "white", width=228)
+    footer(img, d, args.source, GREY_ON_INK_SOURCE, "white", "#2a2a28")
     return img
 
 
@@ -172,15 +167,13 @@ def main():
     p.add_argument("--template", required=True, choices=["number", "breaking", "quote"])
     p.add_argument("--out", required=True)
     p.add_argument("--bg", default="ink", choices=["ink", "paper"])
+    p.add_argument("--date", default="")
+    p.add_argument("--source", default="")
     # number
-    p.add_argument("--kicker", default="")
     p.add_argument("--number", default="")
     p.add_argument("--what", default="")
     p.add_argument("--context", default="")
-    p.add_argument("--source", default="")
     # breaking
-    p.add_argument("--tag", default="BREAKING")
-    p.add_argument("--date", default="")
     p.add_argument("--headline", default="")
     p.add_argument("--standfirst", default="")
     # quote
